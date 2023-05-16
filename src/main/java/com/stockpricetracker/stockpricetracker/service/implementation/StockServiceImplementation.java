@@ -6,7 +6,6 @@ import com.stockpricetracker.stockpricetracker.exceptions.StockAlreadyExistsExce
 import com.stockpricetracker.stockpricetracker.exceptions.StockNotFoundException;
 import com.stockpricetracker.stockpricetracker.exceptions.StockPriceFetchException;
 import com.stockpricetracker.stockpricetracker.model.Stock;
-import com.stockpricetracker.stockpricetracker.repository.ApiRequestRepository;
 import com.stockpricetracker.stockpricetracker.repository.StockRepository;
 import com.stockpricetracker.stockpricetracker.service.ApiRequestService;
 import com.stockpricetracker.stockpricetracker.service.StockService;
@@ -17,7 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,12 +23,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class StockServiceImplementation implements StockService {
     private final StockRepository stockRepository;
-    private final ApiRequestRepository apiRequestRepository;
     private final RestTemplate restTemplate;
     private final AlphaVantageConfig alphaVantageConfig;
     private final ApiRequestService apiRequestService;
-    private long lastRequestTime;
-    private int requestCounter;
 
     @Override
     public Stock addStock(Stock stock){
@@ -82,23 +77,6 @@ public class StockServiceImplementation implements StockService {
         } else {
             throw new StockNotFoundException(symbol);
         }
-    }
-
-    private boolean apiRequestLimitReached(){
-        long currentTime = System.currentTimeMillis();
-        long elapsedTime = currentTime - lastRequestTime;
-        if (elapsedTime < 60000) {
-            requestCounter++;
-            if (requestCounter > 5) {
-                return true;
-            }
-        } else {
-            requestCounter = 1;
-            lastRequestTime = currentTime;
-        }
-        LocalDate today = LocalDate.now();
-        long totalRequests = apiRequestRepository.countByTimestampBetween(today.atStartOfDay(), today.atStartOfDay().plusDays(1));
-        return totalRequests >= 500;
     }
 
     @Override
