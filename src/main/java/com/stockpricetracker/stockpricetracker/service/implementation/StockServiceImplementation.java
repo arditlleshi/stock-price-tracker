@@ -1,6 +1,10 @@
 package com.stockpricetracker.stockpricetracker.service.implementation;
 
 import com.stockpricetracker.stockpricetracker.config.AlphaVantageConfig;
+import com.stockpricetracker.stockpricetracker.exceptions.ApiLimitExceededException;
+import com.stockpricetracker.stockpricetracker.exceptions.StockAlreadyExistsException;
+import com.stockpricetracker.stockpricetracker.exceptions.StockNotFoundException;
+import com.stockpricetracker.stockpricetracker.exceptions.StockPriceFetchException;
 import com.stockpricetracker.stockpricetracker.model.Stock;
 import com.stockpricetracker.stockpricetracker.repository.StockRepository;
 import com.stockpricetracker.stockpricetracker.service.StockService;
@@ -12,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -19,9 +24,14 @@ public class StockServiceImplementation implements StockService {
     private final StockRepository stockRepository;
     private final RestTemplate restTemplate;
     private final AlphaVantageConfig alphaVantageConfig;
+    private long lastRequestTime;
+    private int requestCounter;
 
     @Override
     public Stock addStock(Stock stock){
+        if (stockRepository.findBySymbol(stock.getSymbol()).isPresent()) {
+            throw new StockAlreadyExistsException(stock.getSymbol());
+        }
         String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + stock.getSymbol() + "&apikey=" + alphaVantageConfig.getApiKey();
 
         ResponseEntity<AlphaVantageResponse> responseEntity = restTemplate.getForEntity(apiUrl, AlphaVantageResponse.class);
@@ -29,32 +39,54 @@ public class StockServiceImplementation implements StockService {
 
         if (response != null && response.getGlobalQuote().getSymbol() != null) {
             stock.setSymbol(stock.getSymbol().toUpperCase());
-            stockRepository.save(stock);
-            return stock;
+            return stockRepository.save(stock);
         } else {
-            throw new RuntimeException("Unable to fetch stock price for symbol: " + stock.getSymbol());
+            throw new StockPriceFetchException(stock.getSymbol());
         }
     }
 
     @Override
     public StockDTO getStockPrice(String symbol){
+        Optional<Stock> optionalStock = stockRepository.findBySymbol(symbol);
+        if (optionalStock.isPresent()) {
+            if (apiRequestLimitReached()) {
+                throw new ApiLimitExceededException("API request limit exceeded (5 request per minute). Please try again later.");
+            }
+            String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + alphaVantageConfig.getApiKey();
 
-        String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + alphaVantageConfig.getApiKey();
+            ResponseEntity<AlphaVantageResponse> responseEntity = restTemplate.getForEntity(apiUrl, AlphaVantageResponse.class);
+            AlphaVantageResponse response = responseEntity.getBody();
 
-        ResponseEntity<AlphaVantageResponse> responseEntity = restTemplate.getForEntity(apiUrl, AlphaVantageResponse.class);
-        AlphaVantageResponse response = responseEntity.getBody();
-
-        if (stockRepository.findBySymbol(symbol).isPresent() && (response != null && response.getGlobalQuote().getSymbol() != null)) {
-            StockDTO stockDTO = new StockDTO();
-            stockDTO.setPrice(response.getGlobalQuote().getPrice());
-            stockDTO.setSymbol(response.getGlobalQuote().getSymbol());
-            stockDTO.setClose(response.getGlobalQuote().getClose());
-            stockDTO.setHigh(response.getGlobalQuote().getHigh());
-            stockDTO.setLow(response.getGlobalQuote().getLow());
-            return stockDTO;
+            if (response != null && response.getGlobalQuote().getSymbol() != null) {
+                StockDTO stockDTO = new StockDTO();
+                stockDTO.setPrice(response.getGlobalQuote().getPrice());
+                stockDTO.setSymbol(response.getGlobalQuote().getSymbol());
+                stockDTO.setClose(response.getGlobalQuote().getClose());
+                stockDTO.setHigh(response.getGlobalQuote().getHigh());
+                stockDTO.setLow(response.getGlobalQuote().getLow());
+                return stockDTO;
+            } else {
+                throw new StockPriceFetchException(symbol);
+            }
         } else {
-            throw new RuntimeException("Unable to fetch stock price for symbol: " + symbol);
+            throw new StockNotFoundException(symbol);
         }
+    }
+
+    private boolean apiRequestLimitReached(){
+        long currentTime = System.currentTimeMillis();
+        synchronized (this) {
+            if (currentTime - lastRequestTime <= 60 * 1000) {
+                requestCounter++;
+                if (requestCounter >= 5) {
+                    return true;
+                }
+            } else {
+                requestCounter = 1;
+            }
+            lastRequestTime = currentTime;
+        }
+        return false;
     }
 
     @Override
@@ -67,8 +99,8 @@ public class StockServiceImplementation implements StockService {
         if (stockRepository.existsById(id)) {
             stockRepository.deleteById(id);
             return "Successfully deleted Stock with id: " + id;
-        }else {
-            return "Stock not found with id: " + id;
+        } else {
+            throw new StockNotFoundException(id);
         }
     }
 }
