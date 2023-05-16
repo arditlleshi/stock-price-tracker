@@ -6,7 +6,9 @@ import com.stockpricetracker.stockpricetracker.exceptions.StockAlreadyExistsExce
 import com.stockpricetracker.stockpricetracker.exceptions.StockNotFoundException;
 import com.stockpricetracker.stockpricetracker.exceptions.StockPriceFetchException;
 import com.stockpricetracker.stockpricetracker.model.Stock;
+import com.stockpricetracker.stockpricetracker.repository.ApiRequestRepository;
 import com.stockpricetracker.stockpricetracker.repository.StockRepository;
+import com.stockpricetracker.stockpricetracker.service.ApiRequestService;
 import com.stockpricetracker.stockpricetracker.service.StockService;
 import com.stockpricetracker.stockpricetracker.util.AlphaVantageResponse;
 import com.stockpricetracker.stockpricetracker.util.StockDTO;
@@ -15,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,8 +25,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class StockServiceImplementation implements StockService {
     private final StockRepository stockRepository;
+    private final ApiRequestRepository apiRequestRepository;
     private final RestTemplate restTemplate;
     private final AlphaVantageConfig alphaVantageConfig;
+    private final ApiRequestService apiRequestService;
     private long lastRequestTime;
     private int requestCounter;
 
@@ -49,9 +54,15 @@ public class StockServiceImplementation implements StockService {
     public StockDTO getStockPrice(String symbol){
         Optional<Stock> optionalStock = stockRepository.findBySymbol(symbol);
         if (optionalStock.isPresent()) {
-            if (apiRequestLimitReached()) {
+            if (apiRequestService.isRequestLimitReached()) {
                 throw new ApiLimitExceededException("API request limit exceeded (5 request per minute). Please try again later.");
             }
+            if (apiRequestService.isDailyRequestLimitReached()) {
+                throw new ApiLimitExceededException("Daily API request limit reached. Please try again tomorrow.");
+            }
+
+            apiRequestService.saveApiRequest();
+
             String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + alphaVantageConfig.getApiKey();
 
             ResponseEntity<AlphaVantageResponse> responseEntity = restTemplate.getForEntity(apiUrl, AlphaVantageResponse.class);
@@ -75,18 +86,19 @@ public class StockServiceImplementation implements StockService {
 
     private boolean apiRequestLimitReached(){
         long currentTime = System.currentTimeMillis();
-        synchronized (this) {
-            if (currentTime - lastRequestTime <= 60 * 1000) {
-                requestCounter++;
-                if (requestCounter >= 5) {
-                    return true;
-                }
-            } else {
-                requestCounter = 1;
+        long elapsedTime = currentTime - lastRequestTime;
+        if (elapsedTime < 60000) {
+            requestCounter++;
+            if (requestCounter > 5) {
+                return true;
             }
+        } else {
+            requestCounter = 1;
             lastRequestTime = currentTime;
         }
-        return false;
+        LocalDate today = LocalDate.now();
+        long totalRequests = apiRequestRepository.countByTimestampBetween(today.atStartOfDay(), today.atStartOfDay().plusDays(1));
+        return totalRequests >= 500;
     }
 
     @Override
