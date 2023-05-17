@@ -17,6 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -31,8 +32,9 @@ public class StockServiceImplementation implements StockService {
     private final ApiRequestService apiRequestService;
 
     @Override
+    @Transactional
     public Stock addStock(Stock stock){
-        if (stockRepository.findBySymbol(stock.getSymbol()).isPresent()) {
+        if (stockRepository.findBySymbol(stock.getSymbol().toUpperCase()).isPresent()) {
             throw new StockAlreadyExistsException(stock.getSymbol());
         }
         String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + stock.getSymbol() + "&apikey=" + alphaVantageConfig.getApiKey();
@@ -49,8 +51,9 @@ public class StockServiceImplementation implements StockService {
     }
 
     @Override
+    @Transactional
     public StockDTO getStockPrice(String symbol){
-        Optional<Stock> optionalStock = stockRepository.findBySymbol(symbol);
+        Optional<Stock> optionalStock = stockRepository.findBySymbol(symbol.toUpperCase());
         if (optionalStock.isPresent()) {
             if (apiRequestService.isRequestLimitReached()) {
                 throw new ApiLimitExceededException("API request limit exceeded (5 request per minute). Please try again later.");
@@ -94,6 +97,7 @@ public class StockServiceImplementation implements StockService {
     }
 
     @Override
+    @Transactional
     public String deleteById(Long id){
         if (stockRepository.existsById(id)) {
             stockRepository.deleteById(id);
