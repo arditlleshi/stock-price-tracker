@@ -45,8 +45,8 @@ public class StockServiceImplementationTest {
         stock.setSymbol("AAPL");
 
         AlphaVantageResponse response = new AlphaVantageResponse();
-        response.setGlobalQuote(new AlphaVantageResponse.GlobalQuote());
-        response.getGlobalQuote().setSymbol("AAPL");
+        response.setTimeSeries(new AlphaVantageResponse.TimeSeries());
+        response.getTimeSeries().setInformation("AAPL");
 
         ResponseEntity<AlphaVantageResponse> responseEntity = ResponseEntity.ok(response);
 

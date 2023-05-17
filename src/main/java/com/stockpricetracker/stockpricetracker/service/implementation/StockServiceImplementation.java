@@ -37,12 +37,12 @@ public class StockServiceImplementation implements StockService {
         if (stockRepository.findBySymbol(stock.getSymbol().toUpperCase()).isPresent()) {
             throw new StockAlreadyExistsException(stock.getSymbol());
         }
-        String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + stock.getSymbol() + "&apikey=" + alphaVantageConfig.getApiKey();
+        String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=" + stock.getSymbol() + "&apikey=" + alphaVantageConfig.getApiKey();
 
         ResponseEntity<AlphaVantageResponse> responseEntity = restTemplate.getForEntity(apiUrl, AlphaVantageResponse.class);
         AlphaVantageResponse response = responseEntity.getBody();
 
-        if (response != null && response.getGlobalQuote().getSymbol() != null) {
+        if (response != null && response.getTimeSeries() != null) {
             stock.setSymbol(stock.getSymbol().toUpperCase());
             return stockRepository.save(stock);
         } else {
@@ -56,26 +56,27 @@ public class StockServiceImplementation implements StockService {
         Optional<Stock> optionalStock = stockRepository.findBySymbol(symbol.toUpperCase());
         if (optionalStock.isPresent()) {
             if (apiRequestService.isRequestLimitReached()) {
-                throw new ApiLimitExceededException("API request limit exceeded (5 request per minute). Please try again later.");
+                throw new ApiLimitExceededException("API request limit exceeded (5 calls per minute). Please try again later.");
             }
             if (apiRequestService.isDailyRequestLimitReached()) {
-                throw new ApiLimitExceededException("Daily API request limit reached. Please try again tomorrow.");
+                throw new ApiLimitExceededException("Daily API request limit reached (500 calls per day). Please try again tomorrow.");
             }
 
             apiRequestService.saveApiRequest();
 
-            String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=GLOBAL_QUOTE&symbol=" + symbol + "&apikey=" + alphaVantageConfig.getApiKey();
+            String apiUrl = alphaVantageConfig.getBaseUrl() + "/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol=" + symbol + "&apikey=" + alphaVantageConfig.getApiKey();
 
             ResponseEntity<AlphaVantageResponse> responseEntity = restTemplate.getForEntity(apiUrl, AlphaVantageResponse.class);
             AlphaVantageResponse response = responseEntity.getBody();
 
-            if (response != null && response.getGlobalQuote().getSymbol() != null) {
+            if (response != null && response.getMetaData() != null && response.getTimeSeries() != null) {
                 StockDTO stockDTO = new StockDTO();
-                stockDTO.setPrice(response.getGlobalQuote().getPrice());
-                stockDTO.setSymbol(response.getGlobalQuote().getSymbol());
-                stockDTO.setClose(response.getGlobalQuote().getClose());
-                stockDTO.setHigh(response.getGlobalQuote().getHigh());
-                stockDTO.setLow(response.getGlobalQuote().getLow());
+                stockDTO.setInformation(response.getMetaData().getInformation());
+                stockDTO.setSymbol(response.getMetaData().getSymbol());
+                stockDTO.setLastRefreshed(response.getMetaData().getLastRefreshed());
+                stockDTO.setOutputSize(response.getMetaData().getOutputSize());
+                stockDTO.setTimeZone(response.getMetaData().getTimeZone());
+                stockDTO.setTimeSeries(response.getTimeSeries());
                 return stockDTO;
             } else {
                 throw new StockPriceFetchException(symbol);
