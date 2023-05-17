@@ -2,7 +2,7 @@ package com.stockpricetracker.stockpricetracker.exceptions;
 
 public class StockNotFoundException extends RuntimeException{
     public StockNotFoundException(String symbol){
-        super("Stock not found for symbol: " + symbol);
+        super("Stock not found with symbol: " + symbol);
     }
 
     public StockNotFoundException(Long id){
