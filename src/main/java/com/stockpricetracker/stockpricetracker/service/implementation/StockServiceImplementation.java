@@ -12,6 +12,9 @@ import com.stockpricetracker.stockpricetracker.service.StockService;
 import com.stockpricetracker.stockpricetracker.util.AlphaVantageResponse;
 import com.stockpricetracker.stockpricetracker.util.StockDTO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -82,6 +85,12 @@ public class StockServiceImplementation implements StockService {
     @Override
     public List<Stock> getAllStocks(){
         return stockRepository.findAll();
+    }
+
+    @Override
+    public Page<Stock> getAllStocks(Integer pageNumber, Integer pageSize){
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        return stockRepository.findAll(pageable);
     }
 
     @Override
