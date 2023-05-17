@@ -43,11 +43,6 @@
             <optional>true</optional>
         </dependency>
         <dependency>
-            <groupId>com.alpha-vantage</groupId>
-            <artifactId>alpha-vantage-api</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
